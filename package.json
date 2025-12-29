@@ -1,0 +1,33 @@
+{
+  "name": "whatsapp-downloader-bot",
+  "version": "1.0.0",
+  "description": "WhatsApp bot untuk download video dari TikTok, YouTube, dan Instagram",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "downloader",
+    "tiktok",
+    "youtube",
+    "instagram"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.8",
+    "axios": "^1.7.2",
+    "chalk": "^4.1.2",
+    "cheerio": "^1.0.0-rc.12",
+    "figlet": "^1.7.0",
+    "pino": "^9.3.2",
+    "qrcode-terminal": "^0.12.0",
+    "ytdl-core": "^4.11.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
+  }
+}

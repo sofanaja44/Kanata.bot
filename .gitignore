@@ -1,0 +1,32 @@
+# WhatsApp session (JANGAN COMMIT!)
+session/
+
+# Temporary files
+temp/
+*.tmp
+
+# Node modules
+node_modules/
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Package manager
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
