@@ -18,21 +18,19 @@ async execute(sock, msg, args) {
     const chatId = msg.key.remoteJid;
     
     try {
-        // Validasi URL
         if (!args[0]) {
             await sock.sendMessage(chatId, {
                 text: '❌ *Cara Penggunaan:*\n\n' +
-                      '`.tiktok <url>`\n\n' +
+                      '.tiktok <url>\n\n' +
                       '*Contoh:*\n' +
-                      '`.tiktok https://vt.tiktok.com/ZSxxxxx`\n' +
-                      '`.tiktok https://www.tiktok.com/@user/video/xxxxx`'
+                      '.tiktok https://vt.tiktok.com/ZSxxxxx\n' +
+                      '.tiktok https://www.tiktok.com/@user/video/xxxxx'
             });
             return;
         }
 
         const url = args[0];
         
-        // Validasi format URL TikTok
         if (!this.isValidTikTokUrl(url)) {
             await sock.sendMessage(chatId, {
                 text: '❌ URL tidak valid!\n\n' +
@@ -44,24 +42,19 @@ async execute(sock, msg, args) {
             return;
         }
 
-        // Kirim pesan loading
         const loadingMsg = await sock.sendMessage(chatId, {
             text: '⏳ *Memproses video...*\n\n' +
                   '🔄 Mengambil informasi video\n' +
                   '⏰ Mohon tunggu sebentar...'
         });
 
-        // Dapatkan URL sebenarnya jika short URL
         const realUrl = await this.getRealUrl(url);
-        
-        // Scrape video info
         const videoInfo = await this.scrapeVideoInfo(realUrl);
         
         if (!videoInfo || !videoInfo.videoUrl) {
             throw new Error('Gagal mendapatkan informasi video');
         }
 
-        // Update loading message
         await sock.sendMessage(chatId, {
             text: '⏳ *Mendownload video...*\n\n' +
                   '📥 Sedang mendownload\n' +
@@ -70,11 +63,9 @@ async execute(sock, msg, args) {
             edit: loadingMsg.key
         });
 
-        // Download video menggunakan ffmpeg
         const outputPath = path.join(__dirname, '../temp', `tiktok_${Date.now()}.mp4`);
         await this.downloadWithFfmpeg(videoInfo.videoUrl, outputPath);
 
-        // Update loading message
         await sock.sendMessage(chatId, {
             text: '⏳ *Mengupload video...*\n\n' +
                   '📤 Sedang mengupload ke WhatsApp\n' +
@@ -82,7 +73,6 @@ async execute(sock, msg, args) {
             edit: loadingMsg.key
         });
 
-        // Kirim video
         await sock.sendMessage(chatId, {
             video: fs.readFileSync(outputPath),
             caption: `✅ *TikTok Download Success!*\n\n` +
@@ -97,10 +87,7 @@ async execute(sock, msg, args) {
             mimetype: 'video/mp4'
         });
 
-        // Hapus file temporary
         this.cleanupFile(outputPath);
-        
-        // Hapus loading message
         await sock.sendMessage(chatId, { delete: loadingMsg.key });
 
     } catch (error) {
@@ -130,7 +117,6 @@ async execute(sock, msg, args) {
     }
 },
 
-// Validasi URL TikTok
 isValidTikTokUrl(url) {
     const patterns = [
         /tiktok\.com\/@[\w.-]+\/video\/\d+/,
@@ -141,15 +127,12 @@ isValidTikTokUrl(url) {
     return patterns.some(pattern => pattern.test(url));
 },
 
-// Dapatkan URL asli dari short URL
 async getRealUrl(url) {
     try {
-        // Jika sudah URL lengkap, return langsung
         if (url.includes('tiktok.com/@') && url.includes('/video/')) {
             return url;
         }
 
-        // Follow redirect untuk short URL
         const response = await axios.get(url, {
             maxRedirects: 5,
             validateStatus: () => true,
@@ -164,10 +147,8 @@ async getRealUrl(url) {
     }
 },
 
-// Scrape informasi video dari TikTok
 async scrapeVideoInfo(url) {
     try {
-        // Method 1: Scrape langsung dari TikTok
         const response = await axios.get(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -181,8 +162,6 @@ async scrapeVideoInfo(url) {
         });
 
         const html = response.data;
-        
-        // Extract dari __UNIVERSAL_DATA_FOR_REHYDRATION__
         const jsonMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application\/json">(.*?)<\/script>/s);
         
         if (jsonMatch) {
@@ -192,7 +171,6 @@ async scrapeVideoInfo(url) {
             if (videoData && videoData.itemInfo && videoData.itemInfo.itemStruct) {
                 const item = videoData.itemInfo.itemStruct;
                 
-                // URL video tanpa watermark
                 let videoUrl = item.video.downloadAddr || 
                               item.video.playAddr || 
                               item.video.bitrateInfo?.[0]?.PlayAddr?.UrlList?.[0];
@@ -212,14 +190,12 @@ async scrapeVideoInfo(url) {
             }
         }
 
-        // Method 2: Fallback menggunakan oembed API (public)
         const videoId = this.extractVideoId(url);
         if (videoId) {
             const oembedUrl = `https://www.tiktok.com/oembed?url=https://www.tiktok.com/@i/video/${videoId}`;
             const oembedResponse = await axios.get(oembedUrl);
             
             if (oembedResponse.data) {
-                // Construct download URL
                 const downloadUrl = `https://tikcdn.io/ssstik/${videoId}`;
                 
                 return {
@@ -244,21 +220,17 @@ async scrapeVideoInfo(url) {
     }
 },
 
-// Extract video ID dari URL
 extractVideoId(url) {
     const match = url.match(/\/video\/(\d+)/);
     return match ? match[1] : null;
 },
 
-// Download video menggunakan ffmpeg
 async downloadWithFfmpeg(videoUrl, outputPath) {
-    // Buat folder temp jika belum ada
     const tempDir = path.dirname(outputPath);
     if (!fs.existsSync(tempDir)) {
         fs.mkdirSync(tempDir, { recursive: true });
     }
 
-    // Command ffmpeg untuk download
     const command = `ffmpeg -user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" ` +
                    `-headers "Referer: https://www.tiktok.com/" ` +
                    `-i "${videoUrl}" ` +
@@ -267,9 +239,8 @@ async downloadWithFfmpeg(videoUrl, outputPath) {
                    `-y "${outputPath}"`;
 
     try {
-        await execPromise(command, { maxBuffer: 50 * 1024 * 1024 }); // 50MB buffer
+        await execPromise(command, { maxBuffer: 50 * 1024 * 1024 });
         
-        // Verify file exists and has content
         if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
             throw new Error('Downloaded file is empty or does not exist');
         }
@@ -278,7 +249,6 @@ async downloadWithFfmpeg(videoUrl, outputPath) {
     } catch (error) {
         console.error('FFmpeg error:', error);
         
-        // Fallback: download dengan axios jika ffmpeg gagal
         try {
             return await this.downloadWithAxios(videoUrl, outputPath);
         } catch (axiosError) {
@@ -287,7 +257,6 @@ async downloadWithFfmpeg(videoUrl, outputPath) {
     }
 },
 
-// Fallback download dengan axios
 async downloadWithAxios(url, outputPath) {
     const response = await axios({
         method: 'GET',
@@ -297,7 +266,7 @@ async downloadWithAxios(url, outputPath) {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Referer': 'https://www.tiktok.com/'
         },
-        maxContentLength: 100 * 1024 * 1024, // 100MB max
+        maxContentLength: 100 * 1024 * 1024,
         maxBodyLength: 100 * 1024 * 1024
     });
 
@@ -310,7 +279,6 @@ async downloadWithAxios(url, outputPath) {
     });
 },
 
-// Format angka dengan K, M
 formatNumber(num) {
     if (!num) return '0';
     
@@ -325,7 +293,6 @@ formatNumber(num) {
     return num.toString();
 },
 
-// Format bytes ke KB, MB
 formatBytes(bytes) {
     if (!bytes) return 'Unknown';
     
@@ -338,7 +305,6 @@ formatBytes(bytes) {
     return bytes + ' B';
 },
 
-// Cleanup file temporary
 cleanupFile(filePath) {
     try {
         if (fs.existsSync(filePath)) {
