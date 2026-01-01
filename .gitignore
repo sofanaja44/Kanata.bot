@@ -1,67 +1,59 @@
-# WhatsApp session (JANGAN COMMIT!)
-session/
-
-# Temporary files
-temp/
-*.tmp
-
-# Node modules
-node_modules/
-
-# Logs
-*.log
-logs/
-
-# OS files
-.DS_Store
-Thumbs.db
-
-# Environment variablescat > .gitignore << 'EOF'
-# Dependencies
+# =========================
+# DEPENDENCIES
+# =========================
 node_modules/
 package-lock.json
+yarn.lock
+pnpm-lock.yaml
 
-# Session & Auth
+# =========================
+# SESSION & AUTH (WA + IG)
+# =========================
+session/
 auth_info/
-*.json
-!config.json
-!package.json
+*.session
+*.creds
 
-# Temporary files
+# =========================
+# INSTAGRAM PRIVATE
+# =========================
+config/instagram.cookie.js
+config/*.cookie.js
+
+# =========================
+# TEMP FILES (OUTPUT)
+# =========================
 temp/
+*.txt
+*.tmp
 *.mp4
 *.jpg
 *.png
 *.mp3
 
-# Logs
-*.log
+# =========================
+# LOGS
+# =========================
 logs/
+*.log
 
-# Environment
+# =========================
+# ENVIRONMENT
+# =========================
 .env
 .env.local
+.env.*
 
-# OS
+# =========================
+# OS FILES
+# =========================
 .DS_Store
 Thumbs.db
 
-# IDE
+# =========================
+# IDE / EDITOR
+# =========================
 .vscode/
 .idea/
 *.swp
 *.swo
-EOF
-.env
-.env.local
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Package manager
-package-lock.json
-yarn.lock
-pnpm-lock.yaml

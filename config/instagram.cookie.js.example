@@ -1,0 +1,23 @@
+/**
+ * Instagram Cookie Template
+ * =========================
+ * Copy file ini jadi:
+ *   instagram.cookie.js
+ * lalu isi value cookie aslinya
+ */
+
+const cookies = [
+  "csrftoken=PASTE_HERE",
+  "datr=PASTE_HERE",
+  "ds_user_id=PASTE_HERE",
+  "ig_did=PASTE_HERE",
+  "mid=PASTE_HERE",
+  "rur=PASTE_HERE",
+  "sessionid=PASTE_HERE",
+  "wd=PASTE_HERE"
+]
+
+module.exports = {
+  // hasil akhirnya tetap 1 baris sesuai standar HTTP header
+  cookie: `${cookies.join("; ")};`
+}
