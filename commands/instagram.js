@@ -1,6 +1,8 @@
 const axios = require('axios');
 const { cookie } = require('../config/instagram.cookie');
 
+const MAX_CAPTION_LENGTH = 300;
+
 module.exports = {
   name: 'instagram',
   aliases: ['ig', 'igdl'],
@@ -29,23 +31,29 @@ module.exports = {
       console.log('[IG] fetch media...');
       const { medias, info } = await fetchMedia(mediaId);
 
-      // kirim media
-      for (let i = 0; i < medias.length; i++) {
-        const m = medias[i];
+      // kirim media dulu
+      for (const m of medias) {
         await sock.sendMessage(chatId, {
           [m.type]: { url: m.url },
           mimetype: m.type === 'video' ? 'video/mp4' : undefined
         });
       }
 
-      // kirim info reel
-      let infoText = `👤 @${info.username}`;
+      // format info markdown
+      let text =
+        `📸 *Instagram ${info.isVideo ? 'Reel' : 'Post'}*\n\n` +
+        `👤 *Username* : @${info.username}\n` +
+        `❤️ *Likes*    : ${formatNumber(info.likeCount)}\n`;
 
-      if (info.caption) {
-        infoText += `\n\n📝 Caption:\n${info.caption}`;
+      if (info.viewCount) {
+        text += `👀 *Views*    : ${formatNumber(info.viewCount)}\n`;
       }
 
-      await sock.sendMessage(chatId, { text: infoText });
+      if (info.caption) {
+        text += `\n📝 *Caption*\n${shortenCaption(info.caption)}`;
+      }
+
+      await sock.sendMessage(chatId, { text });
       await sock.sendMessage(chatId, { delete: waitMsg.key });
 
     } catch (err) {
@@ -169,7 +177,22 @@ async function fetchMedia(mediaId) {
     medias,
     info: {
       username: item.user?.username || 'unknown',
-      caption: item.caption?.text || ''
+      caption: item.caption?.text || '',
+      likeCount: item.like_count || 0,
+      viewCount: item.view_count || null,
+      isVideo: !!item.video_versions
     }
   };
+}
+
+/* =========================
+   UTIL
+========================= */
+function shortenCaption(text) {
+  if (text.length <= MAX_CAPTION_LENGTH) return text;
+  return text.slice(0, MAX_CAPTION_LENGTH) + '…';
+}
+
+function formatNumber(num) {
+  return new Intl.NumberFormat('id-ID').format(num);
 }
