@@ -7,374 +7,194 @@ const execPromise = promisify(exec);
 
 module.exports = {
     name: 'tiktok',
-    aliases: ['tt', 'ttdl', 'tiktokdl'],
+    aliases: ['tt', 'ttdl'],
     category: 'downloader',
     description: 'Download video TikTok tanpa watermark',
-    usage: '.tiktok <url>',
-    examples: [
-        'tiktok https://vt.tiktok.com/ZSxxxxx',
-        'tt https://www.tiktok.com/@user/video/1234567'
-    ],
-    
+
     async execute(sock, msg, args) {
         const chatId = msg.key.remoteJid;
-        
-        try {
-            if (!args[0]) {
-                await sock.sendMessage(chatId, {
-                    text: '❌ *Cara Penggunaan:*\n\n' +
-                          '.tiktok <url>\n\n' +
-                          '*Contoh:*\n' +
-                          '.tiktok https://vt.tiktok.com/ZSxxxxx\n' +
-                          '.tiktok https://www.tiktok.com/@user/video/1234567'
-                });
-                return;
-            }
 
-            const url = args[0];
-            
-            if (!this.isValidTikTokUrl(url)) {
-                await sock.sendMessage(chatId, {
-                    text: '❌ URL tidak valid!\n\nPastikan URL dari TikTok'
-                });
-                return;
-            }
-
-            const loadingMsg = await sock.sendMessage(chatId, {
-                text: '⏳ *Memproses video...*\n\n🔄 Mengambil informasi\n⏰ Mohon tunggu...'
+        if (!args[0]) {
+            return sock.sendMessage(chatId, {
+                text: '❌ contoh:\n.tiktok https://vt.tiktok.com/xxxx'
             });
-
-            const videoData = await this.getVideoData(url);
-            
-            if (!videoData || !videoData.videoUrl) {
-                throw new Error('Video tidak ditemukan atau tidak bisa diakses');
-            }
-
-            await sock.sendMessage(chatId, {
-                text: '⏳ *Mendownload video...*\n\n📥 Sedang mendownload\n⏰ Mohon tunggu...',
-                edit: loadingMsg.key
-            });
-
-            const outputPath = path.join(__dirname, '../temp', `tiktok_${Date.now()}.mp4`);
-            await this.downloadVideo(videoData.videoUrl, outputPath);
-
-            await sock.sendMessage(chatId, {
-                text: '⏳ *Mengupload...*\n\n📤 Hampir selesai...',
-                edit: loadingMsg.key
-            });
-
-            const caption = `✅ *TikTok Download Success!*\n\n` +
-                          `👤 *Author:* ${videoData.author || 'Unknown'}\n` +
-                          `📝 *Caption:* ${videoData.title || 'No caption'}\n` +
-                          `❤️ *Likes:* ${videoData.likes || '-'}\n` +
-                          `👁️ *Views:* ${videoData.views || '-'}\n` +
-                          `⏱️ *Duration:* ${videoData.duration || '-'}s\n\n` +
-                          `_No Watermark | Kanata Bot_`;
-
-            await sock.sendMessage(chatId, {
-                video: fs.readFileSync(outputPath),
-                caption: caption,
-                mimetype: 'video/mp4'
-            });
-
-            this.cleanupFile(outputPath);
-            await sock.sendMessage(chatId, { delete: loadingMsg.key });
-
-        } catch (error) {
-            console.error('TikTok Download Error:', error);
-            
-            let errorMsg = '❌ *Download Gagal!*\n\n';
-            
-            if (error.message.includes('tidak ditemukan')) {
-                errorMsg += '• Video tidak ditemukan atau sudah dihapus\n';
-            } else if (error.message.includes('private')) {
-                errorMsg += '• Video ini bersifat private\n';
-            } else if (error.message.includes('network')) {
-                errorMsg += '• Masalah koneksi internet\n';
-            } else {
-                errorMsg += `• ${error.message}\n`;
-            }
-            
-            errorMsg += '\n💡 *Solusi:*\n';
-            errorMsg += '• Pastikan video masih ada\n';
-            errorMsg += '• Pastikan video tidak private\n';
-            errorMsg += '• Coba beberapa saat lagi\n';
-            errorMsg += '• Gunakan URL yang berbeda';
-
-            await sock.sendMessage(chatId, { text: errorMsg });
         }
+
+        let inputUrl = args[0];
+        let retry = 0;
+        let lastError;
+
+        const loading = await sock.sendMessage(chatId, { text: '⏳ proses dulu yaa…' });
+
+        while (retry < 3) {
+            try {
+                console.log(`🔁 Retry ke-${retry + 1}`);
+
+                const realUrl = await this.resolveTikTokUrl(inputUrl);
+                const data = await this.getVideoData(realUrl);
+
+                if (!data?.videoUrl) throw new Error('Video URL kosong');
+
+                const output = path.join(__dirname, '../temp', `tt_${Date.now()}.mp4`);
+                await this.downloadVideo(data.videoUrl, output);
+
+                await sock.sendMessage(chatId, {
+                    video: fs.readFileSync(output),
+                    caption:
+                        `✅ TikTok berhasil\n\n` +
+                        `👤 ${data.author}\n` +
+                        `📝 ${data.title}\n\n` +
+                        `_Kanata Bot_`,
+                    mimetype: 'video/mp4'
+                });
+
+                fs.unlinkSync(output);
+                await sock.sendMessage(chatId, { delete: loading.key });
+                return;
+
+            } catch (e) {
+                lastError = e;
+                console.log('❌ Error:', e.message);
+                retry++;
+            }
+        }
+
+        await sock.sendMessage(chatId, {
+            text: `❌ gagal juga 😭\n\n${lastError.message}`
+        });
     },
 
-    isValidTikTokUrl(url) {
-        const patterns = [
-            /tiktok\.com\/@[\w.-]+\/video\/\d+/,
-            /vt\.tiktok\.com\/[\w-]+/,
-            /vm\.tiktok\.com\/[\w-]+/,
-            /tiktok\.com\/t\/[\w-]+/,
-            /tiktok\.com\/v\/\d+/
-        ];
-        return patterns.some(pattern => pattern.test(url));
+    /* =========================
+       VALIDATION & RESOLVE
+    ========================== */
+
+    async resolveTikTokUrl(url) {
+        if (url.includes('/@') && url.includes('/video/')) return url;
+
+        const res = await axios.get(url, {
+            maxRedirects: 5,
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
+
+        return res.request?.res?.responseUrl || url;
     },
+
+    normalizeVideoUrl(url) {
+        if (!url) return null;
+        if (url.startsWith('http')) return url;
+        if (url.startsWith('/')) return 'https://www.tikwm.com' + url;
+        return url;
+    },
+
+    /* =========================
+       VIDEO DATA
+    ========================== */
 
     async getVideoData(url) {
         const methods = [
-            () => this.method1_TikWM(url),
-            () => this.method2_SnapTik(url),
-            () => this.method3_Direct(url)
+            () => this.fromTikWM(url),
+            () => this.fromSnapTik(url),
+            () => this.fromDirect(url)
         ];
 
         for (let i = 0; i < methods.length; i++) {
             try {
-                console.log(`Trying method ${i + 1}...`);
-                const result = await methods[i]();
-                if (result && result.videoUrl) {
-                    console.log(`Method ${i + 1} success!`);
-                    return result;
-                }
-            } catch (error) {
-                console.log(`Method ${i + 1} failed:`, error.message);
-                if (i === methods.length - 1) {
-                    throw error;
-                }
+                console.log(`⚡ Method ${i + 1}`);
+                const res = await methods[i]();
+                if (res?.videoUrl) return res;
+            } catch (e) {
+                console.log(`❌ Method ${i + 1} gagal`);
             }
         }
-
-        throw new Error('Semua metode download gagal');
+        throw new Error('Semua metode gagal');
     },
 
-    async method1_TikWM(url) {
-        try {
-            const realUrl = await this.getRealUrl(url);
-            
-            const response = await axios.post('https://www.tikwm.com/api/', {
-                url: realUrl,
-                count: 12,
-                cursor: 0,
-                web: 1,
-                hd: 1
-            }, {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
+    async fromTikWM(url) {
+        const res = await axios.post(
+            'https://www.tikwm.com/api/',
+            new URLSearchParams({ url, hd: 1 }).toString(),
+            { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+        );
 
-            if (response.data.code === 0 && response.data.data) {
-                const data = response.data.data;
-                return {
-                    videoUrl: data.hdplay || data.play,
-                    author: data.author?.unique_id || 'Unknown',
-                    title: data.title || 'No caption',
-                    likes: this.formatNumber(data.digg_count),
-                    views: this.formatNumber(data.play_count),
-                    duration: data.duration
-                };
-            }
+        if (res.data.code !== 0) throw new Error('TikWM gagal');
 
-            throw new Error('TikWM API failed');
-        } catch (error) {
-            throw new Error('Method 1 failed: ' + error.message);
-        }
+        const d = res.data.data;
+        return {
+            videoUrl: this.normalizeVideoUrl(d.hdplay || d.play),
+            author: d.author?.unique_id || '-',
+            title: d.title || '-'
+        };
     },
 
-    async method2_SnapTik(url) {
-        try {
-            const realUrl = await this.getRealUrl(url);
-            
-            const response = await axios.get('https://snaptik.app/abc2.php', {
-                params: { url: realUrl, lang: 'en' },
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
+    async fromSnapTik(url) {
+        const res = await axios.get('https://snaptik.app/abc2.php', {
+            params: { url },
+            headers: { 'User-Agent': 'Mozilla/5.0' }
+        });
 
-            const html = response.data;
-            const videoMatch = html.match(/href="([^"]*)"[^>]*download/i);
-            
-            if (videoMatch && videoMatch[1]) {
-                const videoUrl = videoMatch[1];
-                
-                const titleMatch = html.match(/<div class="video-title">([^<]+)<\/div>/i);
-                const title = titleMatch ? titleMatch[1].trim() : 'No caption';
+        const m = res.data.match(/href="([^"]+)"[^>]*download/i);
+        if (!m) throw new Error('SnapTik gagal');
 
-                return {
-                    videoUrl: videoUrl,
-                    author: 'Unknown',
-                    title: title,
-                    likes: '-',
-                    views: '-',
-                    duration: '-'
-                };
-            }
-
-            throw new Error('SnapTik parsing failed');
-        } catch (error) {
-            throw new Error('Method 2 failed: ' + error.message);
-        }
+        return {
+            videoUrl: m[1],
+            author: '-',
+            title: '-'
+        };
     },
 
-    async method3_Direct(url) {
-        try {
-            const realUrl = await this.getRealUrl(url);
-            
-            const response = await axios.get(realUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.9',
-                    'Referer': 'https://www.tiktok.com/',
-                    'Sec-Fetch-Dest': 'document',
-                    'Sec-Fetch-Mode': 'navigate'
-                }
-            });
-
-            const html = response.data;
-            
-            const scriptMatch = html.match(/<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)<\/script>/s);
-            if (scriptMatch) {
-                const jsonData = JSON.parse(scriptMatch[1]);
-                const detail = jsonData?.__DEFAULT_SCOPE__?.['webapp.video-detail'];
-                
-                if (detail?.itemInfo?.itemStruct) {
-                    const item = detail.itemInfo.itemStruct;
-                    const video = item.video;
-                    
-                    let videoUrl = video.downloadAddr || video.playAddr;
-                    
-                    if (video.bitrateInfo && video.bitrateInfo.length > 0) {
-                        videoUrl = video.bitrateInfo[0].PlayAddr?.UrlList?.[0] || videoUrl;
-                    }
-
-                    return {
-                        videoUrl: videoUrl,
-                        author: item.author?.uniqueId || item.author?.nickname || 'Unknown',
-                        title: item.desc || 'No caption',
-                        likes: this.formatNumber(item.stats?.diggCount),
-                        views: this.formatNumber(item.stats?.playCount),
-                        duration: video.duration
-                    };
-                }
+    async fromDirect(url) {
+        const res = await axios.get(url, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0',
+                'Referer': 'https://www.tiktok.com/'
             }
+        });
 
-            const oembedMatch = html.match(/"downloadAddr":"([^"]+)"/);
-            if (oembedMatch) {
-                const videoUrl = oembedMatch[1].replace(/\\u002F/g, '/');
-                return {
-                    videoUrl: videoUrl,
-                    author: 'Unknown',
-                    title: 'TikTok Video',
-                    likes: '-',
-                    views: '-',
-                    duration: '-'
-                };
-            }
+        const m = res.data.match(/"downloadAddr":"([^"]+)"/);
+        if (!m) throw new Error('Direct gagal');
 
-            throw new Error('Direct scraping failed');
-        } catch (error) {
-            throw new Error('Method 3 failed: ' + error.message);
-        }
+        return {
+            videoUrl: m[1].replace(/\\u002F/g, '/'),
+            author: '-',
+            title: '-'
+        };
     },
 
-    async getRealUrl(url) {
-        try {
-            if (url.includes('tiktok.com/@') && url.includes('/video/')) {
-                return url;
-            }
+    /* =========================
+       DOWNLOAD SYSTEM
+    ========================== */
 
-            const response = await axios.get(url, {
-                maxRedirects: 10,
-                validateStatus: () => true,
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-
-            return response.request?.res?.responseUrl || response.request?.path || url;
-        } catch (error) {
-            return url;
-        }
-    },
-
-    async downloadVideo(videoUrl, outputPath) {
-        const tempDir = path.dirname(outputPath);
-        if (!fs.existsSync(tempDir)) {
-            fs.mkdirSync(tempDir, { recursive: true });
-        }
+    async downloadVideo(videoUrl, output) {
+        videoUrl = this.normalizeVideoUrl(videoUrl);
+        if (!videoUrl.startsWith('http')) throw new Error('URL video invalid');
 
         try {
-            const command = `ffmpeg -user_agent "Mozilla/5.0" -headers "Referer: https://www.tiktok.com/" -i "${videoUrl}" -c copy -y "${outputPath}"`;
-            
-            await execPromise(command, { 
-                maxBuffer: 50 * 1024 * 1024,
-                timeout: 60000
-            });
-            
-            if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
-                throw new Error('FFmpeg failed');
-            }
-            
-            return outputPath;
-        } catch (error) {
-            console.log('FFmpeg failed, trying axios...');
-            return await this.downloadWithAxios(videoUrl, outputPath);
+            await execPromise(
+                `ffmpeg -y -headers "Referer: https://www.tiktok.com/" -i "${videoUrl}" -c copy "${output}"`,
+                { timeout: 60000 }
+            );
+            if (!fs.existsSync(output)) throw new Error();
+            return;
+        } catch {
+            console.log('⚠️ ffmpeg gagal → axios');
         }
-    },
 
-    async downloadWithAxios(url, outputPath) {
-        const response = await axios({
+        const res = await axios({
+            url: videoUrl,
             method: 'GET',
-            url: url,
             responseType: 'stream',
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                'User-Agent': 'Mozilla/5.0',
                 'Referer': 'https://www.tiktok.com/'
-            },
-            maxContentLength: 100 * 1024 * 1024,
-            timeout: 60000
-        });
-
-        const writer = fs.createWriteStream(outputPath);
-        response.data.pipe(writer);
-
-        return new Promise((resolve, reject) => {
-            writer.on('finish', () => {
-                if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
-                    resolve(outputPath);
-                } else {
-                    reject(new Error('Downloaded file is empty'));
-                }
-            });
-            writer.on('error', reject);
-            
-            setTimeout(() => {
-                writer.close();
-                reject(new Error('Download timeout'));
-            }, 60000);
-        });
-    },
-
-    formatNumber(num) {
-        if (!num) return '-';
-        num = parseInt(num);
-        if (isNaN(num)) return '-';
-        
-        if (num >= 1000000) {
-            return (num / 1000000).toFixed(1) + 'M';
-        }
-        if (num >= 1000) {
-            return (num / 1000).toFixed(1) + 'K';
-        }
-        return num.toString();
-    },
-
-    cleanupFile(filePath) {
-        try {
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath);
             }
-        } catch (error) {
-            console.error('Cleanup error:', error.message);
-        }
+        });
+
+        const writer = fs.createWriteStream(output);
+        res.data.pipe(writer);
+
+        return new Promise((ok, fail) => {
+            writer.on('finish', ok);
+            writer.on('error', fail);
+        });
     }
 };
-EOF
