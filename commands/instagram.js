@@ -1,150 +1,175 @@
 const axios = require('axios');
-const fs = require('fs');
-const path = require('path');
+const { cookie } = require('../config/instagram.cookie');
 
 module.exports = {
-    name: 'instagram',
-    aliases: ['ig', 'igdl', 'insta'],
-    category: 'downloader',
-    description: 'Download foto/video dari Instagram',
-    usage: '.instagram <url>',
-    examples: [
-        'instagram https://www.instagram.com/p/xxxxx',
-        'ig https://www.instagram.com/reel/xxxxx'
-    ],
-    
-    async execute(sock, msg, args) {
-        const chatId = msg.key.remoteJid;
-        
-        try {
-            if (!args[0]) {
-                await sock.sendMessage(chatId, {
-                    text: '❌ *Cara Penggunaan:*\n\n' +
-                          '.instagram <url>\n\n' +
-                          '*Contoh:*\n' +
-                          '.instagram https://www.instagram.com/p/xxxxx\n' +
-                          '.ig https://www.instagram.com/reel/xxxxx'
-                });
-                return;
-            }
+  name: 'instagram',
+  aliases: ['ig', 'igdl'],
 
-            const url = args[0];
-            
-            if (!this.isValidInstagramUrl(url)) {
-                await sock.sendMessage(chatId, {
-                    text: '❌ URL tidak valid!\n\nPastikan URL dari Instagram'
-                });
-                return;
-            }
+  async execute(sock, msg, args) {
+    const chatId = msg.key.remoteJid;
+    const url = args[0];
 
-            const loadingMsg = await sock.sendMessage(chatId, {
-                text: '⏳ *Memproses media...*\n\n🔄 Mengambil informasi\n⏰ Mohon tunggu...'
-            });
-
-            const mediaData = await this.getMediaData(url);
-            
-            if (!mediaData || !mediaData.media || mediaData.media.length === 0) {
-                throw new Error('Media tidak ditemukan');
-            }
-
-            await sock.sendMessage(chatId, {
-                text: '⏳ *Mendownload media...*\n\n📥 Sedang mendownload\n⏰ Mohon tunggu...',
-                edit: loadingMsg.key
-            });
-
-            const caption = `✅ *Instagram Download Success!*\n\n` +
-                          `👤 *Username:* ${mediaData.username || 'Unknown'}\n` +
-                          `📝 *Caption:* ${mediaData.caption || 'No caption'}\n` +
-                          `❤️ *Likes:* ${mediaData.likes || '-'}\n` +
-                          `💬 *Comments:* ${mediaData.comments || '-'}\n` +
-                          `📊 *Type:* ${mediaData.type || 'Unknown'}\n\n` +
-                          `_Kanata Bot_`;
-
-            for (let i = 0; i < mediaData.media.length; i++) {
-                const item = mediaData.media[i];
-                
-                if (item.type === 'video') {
-                    await sock.sendMessage(chatId, {
-                        video: { url: item.url },
-                        caption: i === 0 ? caption : `Video ${i + 1}/${mediaData.media.length}`,
-                        mimetype: 'video/mp4'
-                    });
-                } else {
-                    await sock.sendMessage(chatId, {
-                        image: { url: item.url },
-                        caption: i === 0 ? caption : `Foto ${i + 1}/${mediaData.media.length}`
-                    });
-                }
-            }
-
-            await sock.sendMessage(chatId, { delete: loadingMsg.key });
-
-        } catch (error) {
-            console.error('Instagram Download Error:', error);
-            
-            let errorMsg = '❌ *Download Gagal!*\n\n';
-            errorMsg += `• ${error.message}\n\n`;
-            errorMsg += '💡 *Solusi:*\n';
-            errorMsg += '• Pastikan post tidak private\n';
-            errorMsg += '• Pastikan URL valid\n';
-            errorMsg += '• Coba beberapa saat lagi';
-
-            await sock.sendMessage(chatId, { text: errorMsg });
-        }
-    },
-
-    isValidInstagramUrl(url) {
-        const patterns = [
-            /instagram\.com\/(p|reel|tv)\/[\w-]+/,
-            /instagr\.am\/(p|reel)\/[\w-]+/
-        ];
-        return patterns.some(pattern => pattern.test(url));
-    },
-
-    async getMediaData(url) {
-        try {
-            const response = await axios.post('https://v3.igdownloader.app/api/ajaxSearch', {
-                recaptchaToken: '',
-                q: url,
-                t: 'media',
-                lang: 'en'
-            }, {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                }
-            });
-
-            if (response.data && response.data.data) {
-                const html = response.data.data;
-                const media = [];
-                
-                const videoMatches = html.matchAll(/href="([^"]+)"[^>]*>Download Video/gi);
-                for (const match of videoMatches) {
-                    media.push({ type: 'video', url: match[1] });
-                }
-                
-                const imageMatches = html.matchAll(/href="([^"]+)"[^>]*>Download Image/gi);
-                for (const match of imageMatches) {
-                    media.push({ type: 'image', url: match[1] });
-                }
-
-                const usernameMatch = html.match(/@([\w.]+)/);
-                const username = usernameMatch ? usernameMatch[1] : 'Unknown';
-
-                return {
-                    media: media,
-                    username: username,
-                    caption: 'Instagram Media',
-                    type: media.length > 1 ? 'Carousel' : (media[0]?.type === 'video' ? 'Reel/Video' : 'Photo'),
-                    likes: '-',
-                    comments: '-'
-                };
-            }
-
-            throw new Error('Gagal mendapatkan data media');
-        } catch (error) {
-            throw new Error('Instagram scraping failed: ' + error.message);
-        }
+    if (!url) {
+      return sock.sendMessage(chatId, {
+        text: '❌ Kirim link Instagram ya'
+      });
     }
+
+    const waitMsg = await sock.sendMessage(chatId, {
+      text: '⏳ Sedang memproses Instagram...'
+    });
+
+    try {
+      console.log('[IG] cek login cookie...');
+      await checkLogin();
+
+      const cleanUrl = url.split('?')[0];
+      const mediaId = await getMediaId(cleanUrl);
+
+      console.log('[IG] fetch media...');
+      const { medias, info } = await fetchMedia(mediaId);
+
+      // kirim media
+      for (let i = 0; i < medias.length; i++) {
+        const m = medias[i];
+        await sock.sendMessage(chatId, {
+          [m.type]: { url: m.url },
+          mimetype: m.type === 'video' ? 'video/mp4' : undefined
+        });
+      }
+
+      // kirim info reel
+      let infoText = `👤 @${info.username}`;
+
+      if (info.caption) {
+        infoText += `\n\n📝 Caption:\n${info.caption}`;
+      }
+
+      await sock.sendMessage(chatId, { text: infoText });
+      await sock.sendMessage(chatId, { delete: waitMsg.key });
+
+    } catch (err) {
+      console.error('[IG ERROR]', err.message);
+      await sock.sendMessage(chatId, {
+        text: '❌ Gagal mengambil media Instagram'
+      });
+    }
+  }
 };
+
+/* =========================
+   LOGIN CHECK
+========================= */
+async function checkLogin() {
+  const res = await axios.get(
+    'https://www.instagram.com/accounts/edit/',
+    {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+        'Cookie': cookie
+      },
+      validateStatus: () => true
+    }
+  );
+
+  if (res.status === 200 && res.data.includes('AccountsCenter')) return true;
+  throw new Error('COOKIE NOT LOGGED IN');
+}
+
+/* =========================
+   GET MEDIA ID
+========================= */
+async function getMediaId(url) {
+  try {
+    const res = await axios.get(
+      'https://www.instagram.com/oembed/',
+      {
+        params: { url },
+        headers: {
+          'User-Agent': 'Mozilla/5.0',
+          'Referer': 'https://www.instagram.com/'
+        },
+        timeout: 5000
+      }
+    );
+
+    if (res.data?.media_id) {
+      return res.data.media_id.split('_')[0];
+    }
+  } catch {
+    console.log('[IG] oEmbed gagal, fallback shortcode');
+  }
+
+  const match = url.match(/\/(reel|p|tv)\/([^/]+)/);
+  if (!match) throw new Error('INVALID URL');
+
+  return shortcodeToMediaId(match[2]);
+}
+
+/* =========================
+   SHORTCODE → MEDIA ID
+========================= */
+function shortcodeToMediaId(shortcode) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+  let id = BigInt(0);
+
+  for (const char of shortcode) {
+    const index = alphabet.indexOf(char);
+    if (index === -1) throw new Error('INVALID SHORTCODE');
+    id = id * BigInt(64) + BigInt(index);
+  }
+
+  return id.toString();
+}
+
+/* =========================
+   FETCH MEDIA + INFO
+========================= */
+async function fetchMedia(mediaId) {
+  const res = await axios.get(
+    `https://www.instagram.com/api/v1/media/${mediaId}/info/`,
+    {
+      headers: {
+        'User-Agent': 'Instagram 155.0.0.37.107',
+        'X-IG-App-ID': '936619743392459',
+        'Cookie': cookie
+      },
+      validateStatus: () => true
+    }
+  );
+
+  const item = res.data?.items?.[0];
+  if (!item) throw new Error('MEDIA NOT FOUND');
+
+  const medias = [];
+
+  if (item.video_versions) {
+    medias.push({ type: 'video', url: item.video_versions[0].url });
+  }
+
+  if (item.carousel_media) {
+    for (const c of item.carousel_media) {
+      medias.push({
+        type: c.video_versions ? 'video' : 'image',
+        url: c.video_versions
+          ? c.video_versions[0].url
+          : c.image_versions2.candidates[0].url
+      });
+    }
+  }
+
+  if (!item.video_versions && item.image_versions2 && !item.carousel_media) {
+    medias.push({
+      type: 'image',
+      url: item.image_versions2.candidates[0].url
+    });
+  }
+
+  return {
+    medias,
+    info: {
+      username: item.user?.username || 'unknown',
+      caption: item.caption?.text || ''
+    }
+  };
+}
