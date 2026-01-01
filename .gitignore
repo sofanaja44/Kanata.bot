@@ -16,7 +16,42 @@ logs/
 .DS_Store
 Thumbs.db
 
-# Environment variables
+# Environment variablescat > .gitignore << 'EOF'
+# Dependencies
+node_modules/
+package-lock.json
+
+# Session & Auth
+auth_info/
+*.json
+!config.json
+!package.json
+
+# Temporary files
+temp/
+*.mp4
+*.jpg
+*.png
+*.mp3
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+EOF
 .env
 .env.local
 

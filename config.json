@@ -1,0 +1,29 @@
+{
+  "prefix": ".",
+  "botName": "Kanata Bot",
+  "ownerName": "Owner",
+  "ownerNumbers": [
+    "6281328860289"
+  ],
+  "sessionName": "kanata-session",
+  "autoRead": false,
+  "autoTyping": false,
+  "autoRecording": false,
+  "maxDownloadSize": 100,
+  "timezone": "Asia/Jakarta",
+  "features": {
+    "tiktok": true,
+    "instagram": true,
+    "youtube": false,
+    "twitter": false
+  },
+  "limits": {
+    "video": {
+      "maxSize": 100,
+      "maxDuration": 600
+    },
+    "image": {
+      "maxSize": 10
+    }
+  }
+}
