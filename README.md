@@ -394,7 +394,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 Jika bot ini membantu, kasih ⭐ star di GitHub!
 
 **Need help?**
-- 📧 Email: your-email@example.com
+- 📧 Email: yaradit74@gmail.com
 - 💬 Issues: [GitHub Issues](https://github.com/yourusername/kanata-bot/issues)
 - 📖 Wiki: [Documentation](https://github.com/yourusername/kanata-bot/wiki)
 
